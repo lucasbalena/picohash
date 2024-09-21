@@ -14,15 +14,16 @@ import (
 )
 
 var (
-	verify      = flag.Bool("c", false, "Verificar os hashes dos arquivos")
-	aggregate   = flag.Bool("a", false, "Salvar novos hashes em um arquivo hashes.b3")
-	copyHashes  = flag.Bool("j", false, "Copiar os hashes de arquivos .b3 para hashes.b3")
-	splitHashes = flag.Bool("s", false, "Dividir o hashes.b3 em arquivos .b3 individuais")
-	removeFiles = flag.Bool("r", false, "Remover arquivos .b3, exceto hashes.b3")
-	hdd         = flag.Bool("hdd", false, "Otimizar para HD externo")
-	cat         = flag.Bool("cat", false, "Usar cat para ler o arquivo")
-	Vversion    = flag.Bool("v", false, "Exibe a versao")
-	version     = flag.Bool("version", false, "")
+	verify            = flag.Bool("c", false, "Verificar os hashes dos arquivos")
+	aggregate         = flag.Bool("a", false, "Salvar novos hashes em um arquivo hashes.b3")
+	copyHashes        = flag.Bool("j", false, "Copiar os hashes de arquivos .b3 para hashes.b3")
+	splitHashes       = flag.Bool("s", false, "Dividir o hashes.b3 em arquivos .b3 individuais")
+	removeFiles       = flag.Bool("d", false, "Deletar arquivos .b3, exceto hashes.b3")
+	renameInsideFiles = flag.Bool("r", false, "Renomeia arquivos .b3, exceto hashes.b3")
+	hdd               = flag.Bool("hdd", false, "Otimizar para HD externo")
+	cat               = flag.Bool("cat", false, "Usar cat para ler o arquivo")
+	Vversion          = flag.Bool("v", false, "Exibe a versao")
+	version           = flag.Bool("version", false, "")
 )
 
 // Variáveis para contar as ocorrências
@@ -34,6 +35,7 @@ var (
 	errorCount        int
 	skipedCount       int
 	calculedCount     int
+	singleCount       int
 )
 
 /*
@@ -160,6 +162,7 @@ func saveHashToFile(filePath, hash, dir string) error {
 	// Usar somente o nome do arquivo, sem o caminho completo
 	fileName := filepath.Base(filePath)
 
+	singleCount++
 	_, err = fmt.Fprintf(file, "%s  %s\n", hash, fileName)
 	return err
 }
@@ -352,6 +355,7 @@ func copyHashesToFile(dir string, existingHashes map[string]string) error {
 		// Adicionar ao mapa de hashes existentes
 		existingHashes[originalFilePath] = hash
 
+		singleCount++
 		return nil
 	})
 	if err != nil {
@@ -378,6 +382,79 @@ func splitHashesToFiles(dir string) error {
 	return nil
 }
 
+// Função para verificar e corrigir o nome do arquivo dentro do arquivo .b3
+func checkAndFixB3File(b3FilePath string) error {
+	// Nome do arquivo sem a extensão .b3
+	fileName := strings.TrimSuffix(filepath.Base(b3FilePath), ".b3")
+
+	// Abre o arquivo .b3 para leitura
+	file, err := os.Open(b3FilePath)
+	if err != nil {
+		return fmt.Errorf("❗ erro ao abrir o arquivo .b3: %v", err)
+	}
+	defer file.Close()
+
+	// Lê o conteúdo do arquivo .b3
+	scanner := bufio.NewScanner(file)
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	// Verifica se houve erro na leitura
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("❗ erro ao ler o arquivo .b3: %v", err)
+	}
+	// Verifica se a primeira linha contém o nome correto do arquivo
+	if len(lines) > 0 && !strings.HasSuffix(lines[0], fileName) {
+		// Substitui o nome na primeira linha pelo nome correto
+		parts := strings.SplitN(lines[0], " ", 2)
+		if len(parts) == 2 {
+			lines[0] = parts[0] + "  " + fileName
+		} else {
+			lines[0] = fileName
+		}
+
+		// Reescreve o conteúdo atualizado de volta no arquivo .b3
+		file, err = os.Create(b3FilePath)
+		if err != nil {
+			return fmt.Errorf("❗ erro ao abrir o arquivo .b3 para escrita: %v", err)
+		}
+		defer file.Close()
+
+		writer := bufio.NewWriter(file)
+		for _, line := range lines {
+			_, err := writer.WriteString(line + "\n")
+			if err != nil {
+				return fmt.Errorf("❗ erro ao escrever no arquivo .b3: %v", err)
+			}
+		}
+		writer.Flush()
+
+		fmt.Printf("🔁 Arquivo .b3 atualizado: %s\n", b3FilePath)
+		singleCount++
+	}
+
+	return nil
+}
+
+// Função recursiva para percorrer diretórios e verificar arquivos .b3
+func checkAndFixB3Files(dir string) error {
+	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Ignorar diretórios e arquivos que não são .b3
+		if info.IsDir() || !strings.HasSuffix(path, ".b3") || strings.HasSuffix(path, "hashes.b3") {
+			return nil
+		}
+
+		return checkAndFixB3File(path)
+
+	})
+}
+
 // Remove arquivos .b3, exceto hashes.b3
 func removeB3Files(dir string) error {
 	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -392,6 +469,7 @@ func removeB3Files(dir string) error {
 		}
 
 		fmt.Printf("🗑️ Removendo arquivo .b3: %s\n", path)
+		singleCount++
 		return os.Remove(path)
 	})
 }
@@ -500,7 +578,18 @@ func main() {
 			fmt.Printf("❗ Erro ao copiar os hashes: %v\n", err)
 			return
 		}
-		fmt.Println("✅ Cópia concluída.")
+		fmt.Printf("✅ Cópia concluída. (%d)\n", singleCount)
+		return
+	}
+
+	if *renameInsideFiles {
+		fmt.Println("📂 Renomeando hashes de arquivos .b3...")
+		fmt.Println()
+		if err := checkAndFixB3Files(dir); err != nil {
+			fmt.Printf("❗ Erro ao renomear arquivos: %v\n", err)
+			return
+		}
+		fmt.Printf("\n✅ Renomeação concluída. (%d)\n", singleCount)
 		return
 	}
 
@@ -511,20 +600,20 @@ func main() {
 			fmt.Printf("❗ Erro ao dividir hashes.b3: %v\n", err)
 			return
 		}
-		fmt.Println("✅ Divisão concluída.")
+		fmt.Printf("✅ Divisão concluída. (%d)\n", singleCount)
 		return
 	}
 
 	// Remover arquivos .b3, exceto hashes.b3
 	if *removeFiles {
 		fmt.Println("📂 Removendo arquivos .b3, exceto hashes.b3...")
-
+		fmt.Println()
 		if err := removeB3Files(dir); err != nil {
 			fmt.Printf("❗ Erro ao remover arquivos .b3: %v\n", err)
 			return
 		}
 		fmt.Println()
-		fmt.Println("✅ Remoção concluída.")
+		fmt.Printf("✅ Remoção concluída. (%d)\n", singleCount)
 		return
 	}
 
