@@ -127,9 +127,9 @@ remain correct.
 
 **Rename a file or directory**
 
-    1.	Rename the file.
-    2.	Rename the sidecar file.
-    3.	Run the following to rewrite the sidecar content to match the new filename.
+1. Rename the file.
+2. Rename the sidecar file.
+3. Run the following to rewrite the sidecar content to match the new filename.
 
 ```console
 picohash -r
