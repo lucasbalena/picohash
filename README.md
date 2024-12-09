@@ -94,12 +94,10 @@ picohash -c -a
 picohash -c -a -rapid
 ```
 
-hashes.b3 for b3sum and hashes.rph for rapidhash.
-
 ## Manage the hashes
 
-Use -rapid if you hashed with rapidhash. This will change the extension from .b3
-to .rph.
+**Use -rapid if you hashed with rapidhash. This will change the extension
+from.b3 to .rph**
 
 **Delete all sidecar hash files**
 
@@ -119,6 +117,9 @@ picohash -s
 picohash -j
 ```
 
+It reads hashes.b3 (if it exists) and adds any new hashes found in the directory
+to it.
+
 **Rename a file**
 
     1.	Rename the file.
@@ -132,11 +133,12 @@ picohash -r
 If you use -a:
 
 ```console
-picohash -s
-# Rename the file
-picohash -r
-picohash -j
-picohash -d
+picohash -s                     # Who wants to deal with a long .txt?
+# Rename the file and sidecar
+picohash -r                     # Rename the inside contents
+# Delete hashes.b3              # To prevent duplicates
+picohash -j                     # Recreate hashes.b3
+picohash -d                     # Delete the sidecar files
 ```
 
 | Symbol | Meaning                                             |
