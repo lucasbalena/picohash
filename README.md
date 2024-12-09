@@ -68,7 +68,7 @@ picohash -a ../storage
 picohash -hdd
 ```
 
-This will pass the flags --no-mmap --num-threads=1 to b3sum.
+This will pass the flags `--no-mmap --num-threads=1` to `b3sum`.
 
 **If you want to use cat to read the files for some reason**
 
@@ -96,8 +96,8 @@ picohash -c -a -rapid
 
 ## Manage the hashes
 
-**Use -rapid if you hashed with rapidhash. This will change the extension
-from.b3 to .rph**
+**Use `-rapid` if you hashed with `rapidhash`. This will change the extension
+from _.b3_ to _.rph_**
 
 **Delete all sidecar hash files**
 
