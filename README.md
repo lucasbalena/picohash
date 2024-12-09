@@ -29,7 +29,7 @@ English translation coming soon.
 ## Install
 
 ```console
-go install github.com/lucasbalena/picohash
+go install github.com/lucasbalena/picohash@latest
 ```
 
 ## Hash
