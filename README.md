@@ -137,7 +137,7 @@ correctly relative.
 picohash -r
 ```
 
-If you use -a (ignore sidecar if it is a directory):
+If you used `-a`:
 
 ```console
 picohash -s                     # Who wants to deal with a long .txt?
