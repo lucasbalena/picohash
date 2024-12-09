@@ -70,9 +70,16 @@ func calculateB3(path string) (string, error) {
 // --no-mmap --num-threads=1
 
 // Usa 'cat arquivo | b3sum' para otimizar para HD externo
-func calculateB3WithCat(path string) (string, error) {
+func calculateHashWithCat(path string) (string, error) {
+	var exe string
+	if *rapidhash {
+		exe = "rapidhash"
+	} else {
+		exe = "b3sum"
+
+	}
 	cat := exec.Command("cat", path)
-	b3sum := exec.Command("b3sum")
+	cmd := exec.Command(exe)
 
 	// Cria um pipe para conectar a saída de 'cat' à entrada de 'b3sum'
 	stdoutPipe, err := cat.StdoutPipe()
@@ -84,9 +91,9 @@ func calculateB3WithCat(path string) (string, error) {
 		return "", err
 	}
 
-	b3sum.Stdin = stdoutPipe
+	cmd.Stdin = stdoutPipe
 
-	output, err := b3sum.Output()
+	output, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
@@ -106,7 +113,7 @@ func calculateB3WithCat(path string) (string, error) {
 }
 
 // Calcula o hash
-func calculateB3(path string) (string, error) {
+func calculateHash(path string) (string, error) {
 	var exe string
 	if *rapidhash {
 		exe = "rapidhash"
@@ -115,8 +122,8 @@ func calculateB3(path string) (string, error) {
 
 	}
 	var cmd *exec.Cmd
-	if *cat && runtime.GOOS != "windows" && !*rapidhash {
-		return calculateB3WithCat(path)
+	if *cat && runtime.GOOS != "windows" {
+		return calculateHashWithCat(path)
 	} else if *hdd && !*rapidhash {
 		cmd = exec.Command(exe, path, "--no-mmap", "--num-threads=1")
 	} else {
@@ -233,7 +240,7 @@ func readExistingHashes(dir string) (map[string]string, error) {
 
 // Verifica o hash BLAKE3 de um arquivo em relação ao arquivo .b3 correspondente.
 func verifyHashFromFile(filePath, expectedHash string) error {
-	calculatedHash, err := calculateB3(filePath)
+	calculatedHash, err := calculateHash(filePath)
 	if err != nil {
 		errorCount++
 		return fmt.Errorf("❗ Erro ao calcular o hash do arquivo %s: %v", filePath, err)
@@ -318,7 +325,7 @@ func processDirectory(dir string, verify, aggregate bool, existingHashes map[str
 					return nil
 				}
 				fmt.Printf("⚙️ %s\n", path)
-				hash, err := calculateB3(path)
+				hash, err := calculateHash(path)
 				if err != nil {
 					return err
 				}
@@ -332,7 +339,7 @@ func processDirectory(dir string, verify, aggregate bool, existingHashes map[str
 					return nil
 				}
 				fmt.Printf("⚙️ %s\n", path)
-				hash, err := calculateB3(path)
+				hash, err := calculateHash(path)
 				if err != nil {
 					return err
 				}
@@ -498,13 +505,13 @@ func main() {
 	flag.Parse()
 
 	if *rapidhash {
-		extension = ".rh"
+		extension = ".rph"
 	} else {
 		extension = ".b3"
 	}
 
 	if *version || *Vversion {
-		print("Picohash 1.1\n")
+		print("Picohash 0.2.0\n")
 		return
 	}
 
