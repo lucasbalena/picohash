@@ -1,1 +1,2 @@
 - [ ] exibir arquivos split e join
+- [ ] ignore hashes.b3 and hashes.rph
