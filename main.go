@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"github.com/eiannone/keyboard"
 )
 
 var (
@@ -22,6 +20,7 @@ var (
 	renameInsideFiles = flag.Bool("r", false, "Renomeia arquivos .b3, exceto hashes.b3")
 	hdd               = flag.Bool("hdd", false, "Otimizar para HD externo")
 	cat               = flag.Bool("cat", false, "Usar cat para ler o arquivo")
+	rapidhash         = flag.Bool("rapid", false, "Usar rapidhash")
 	Vversion          = flag.Bool("v", false, "Exibe a versao")
 	version           = flag.Bool("version", false, "")
 )
@@ -36,6 +35,10 @@ var (
 	skipedCount       int
 	calculedCount     int
 	singleCount       int
+)
+
+var (
+	extension string
 )
 
 /*
@@ -104,13 +107,20 @@ func calculateB3WithCat(path string) (string, error) {
 
 // Calcula o hash
 func calculateB3(path string) (string, error) {
-	var cmd *exec.Cmd
-	if *cat && runtime.GOOS != "windows" {
-		return calculateB3WithCat(path)
-	} else if *hdd {
-		cmd = exec.Command("b3sum", path, "--no-mmap", "--num-threads=1")
+	var exe string
+	if *rapidhash {
+		exe = "rapidhash"
 	} else {
-		cmd = exec.Command("b3sum", path)
+		exe = "b3sum"
+
+	}
+	var cmd *exec.Cmd
+	if *cat && runtime.GOOS != "windows" && !*rapidhash {
+		return calculateB3WithCat(path)
+	} else if *hdd && !*rapidhash {
+		cmd = exec.Command(exe, path, "--no-mmap", "--num-threads=1")
+	} else {
+		cmd = exec.Command(exe, path)
 
 	}
 	output, err := cmd.Output()
@@ -125,7 +135,11 @@ func calculateB3(path string) (string, error) {
 		return "", fmt.Errorf("❗ Formato inesperado na saída do b3sum para o arquivo %s", path)
 	}
 
-	return parts[0], nil
+	if *rapidhash {
+		return strings.TrimSpace(string(output)), nil
+	} else {
+		return parts[0], nil
+	}
 }
 
 // Lê o hash do arquivo .b3
@@ -152,7 +166,7 @@ func saveHashToFile(filePath, hash, dir string) error {
 	if err != nil {
 		return err
 	}
-	b3FilePath := filepath.Join(dir, relPath) + ".b3"
+	b3FilePath := filepath.Join(dir, relPath) + extension
 	file, err := os.Create(b3FilePath)
 	if err != nil {
 		return err
@@ -169,7 +183,7 @@ func saveHashToFile(filePath, hash, dir string) error {
 
 // Salva todos os hashes BLAKE3 em um único arquivo hashes.b3.
 func saveAllHashes(hashes map[string]string, dir string) error {
-	file, err := os.Create(filepath.Join(dir, "hashes.b3"))
+	file, err := os.Create(filepath.Join(dir, "hashes"+extension))
 	if err != nil {
 		return err
 	}
@@ -192,7 +206,7 @@ func saveAllHashes(hashes map[string]string, dir string) error {
 func readExistingHashes(dir string) (map[string]string, error) {
 	hashes := make(map[string]string)
 
-	file, err := os.Open(filepath.Join(dir, "hashes.b3"))
+	file, err := os.Open(filepath.Join(dir, "hashes"+extension))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return hashes, nil // Arquivo não existe ainda, retornar mapa vazio
@@ -256,8 +270,8 @@ func processDirectory(dir string, verify, aggregate bool, existingHashes map[str
 		}
 
 		// Verifica .b3 orphans
-		if verify && !aggregate && !strings.HasSuffix(path, "hashes.b3") {
-			originalFilePath := strings.TrimSuffix(path, ".b3")
+		if verify && !aggregate && !strings.HasSuffix(path, "hashes"+extension) {
+			originalFilePath := strings.TrimSuffix(path, extension)
 			if _, err := os.Stat(originalFilePath); os.IsNotExist(err) {
 				fmt.Printf("🔍📂 %s\n", path)
 				fileNotFoundCount++
@@ -266,7 +280,7 @@ func processDirectory(dir string, verify, aggregate bool, existingHashes map[str
 		}
 
 		// Ignora diretórios e arquivos .b3
-		if info.IsDir() || strings.HasSuffix(path, ".b3") {
+		if info.IsDir() || strings.HasSuffix(path, extension) {
 			return nil
 		}
 
@@ -282,7 +296,7 @@ func processDirectory(dir string, verify, aggregate bool, existingHashes map[str
 
 			} else {
 				// Verifica o arquivo .b3 correspondente
-				b3FilePath := path + ".b3"
+				b3FilePath := path + extension
 				if _, err := os.Stat(b3FilePath); os.IsNotExist(err) {
 					fmt.Printf("🔍⛏️  %s\n", path)
 					hashNotFoundCount++
@@ -312,7 +326,7 @@ func processDirectory(dir string, verify, aggregate bool, existingHashes map[str
 				existingHashes[path] = hash
 			} else {
 				// Geração de arquivos .b3 individuais
-				if _, err := os.Stat(path + ".b3"); !os.IsNotExist(err) {
+				if _, err := os.Stat(path + extension); !os.IsNotExist(err) {
 					fmt.Printf("⏭️ %s\n", path)
 					skipedCount++
 					return nil
@@ -339,7 +353,7 @@ func copyHashesToFile(dir string, existingHashes map[string]string) error {
 		}
 
 		// Ignorar diretórios e arquivos que não são .b3
-		if info.IsDir() || !strings.HasSuffix(path, ".b3") || strings.HasSuffix(path, "hashes.b3") {
+		if info.IsDir() || !strings.HasSuffix(path, extension) || strings.HasSuffix(path, "hashes"+extension) {
 			return nil
 		}
 
@@ -350,7 +364,7 @@ func copyHashesToFile(dir string, existingHashes map[string]string) error {
 		}
 
 		// Extrair o nome do arquivo correspondente ao .b3
-		originalFilePath := strings.TrimSuffix(path, ".b3")
+		originalFilePath := strings.TrimSuffix(path, extension)
 
 		// Adicionar ao mapa de hashes existentes
 		existingHashes[originalFilePath] = hash
@@ -385,7 +399,7 @@ func splitHashesToFiles(dir string) error {
 // Função para verificar e corrigir o nome do arquivo dentro do arquivo .b3
 func checkAndFixB3File(b3FilePath string) error {
 	// Nome do arquivo sem a extensão .b3
-	fileName := strings.TrimSuffix(filepath.Base(b3FilePath), ".b3")
+	fileName := strings.TrimSuffix(filepath.Base(b3FilePath), extension)
 
 	// Abre o arquivo .b3 para leitura
 	file, err := os.Open(b3FilePath)
@@ -446,7 +460,7 @@ func checkAndFixB3Files(dir string) error {
 		}
 
 		// Ignorar diretórios e arquivos que não são .b3
-		if info.IsDir() || !strings.HasSuffix(path, ".b3") || strings.HasSuffix(path, "hashes.b3") {
+		if info.IsDir() || !strings.HasSuffix(path, extension) || strings.HasSuffix(path, "hashes"+extension) {
 			return nil
 		}
 
@@ -461,10 +475,10 @@ func removeB3Files(dir string) error {
 		if err != nil {
 			return err
 		}
-		//path == filepath.Join(dir, "hashes.b3"
+		//path == filepath.Join(dir, "hashes" + extension
 
 		// Ignorar diretórios e arquivos que não são .b3
-		if info.IsDir() || strings.HasSuffix(path, "hashes.b3") || !strings.HasSuffix(path, ".b3") {
+		if info.IsDir() || strings.HasSuffix(path, "hashes"+extension) || !strings.HasSuffix(path, extension) {
 			return nil
 		}
 
@@ -476,79 +490,33 @@ func removeB3Files(dir string) error {
 
 // Verifica se um comando está disponível no sistema
 func isCommandAvailable(cmdName string) bool {
-	cmd := exec.Command(cmdName, "--version")
+	cmd := exec.Command(cmdName, "--help")
 	return cmd.Run() == nil
-}
-
-// Pergunta ao usuário se deseja prosseguir com a instalação de um pacote
-func askToInstall(packageName, method string) bool {
-	fmt.Printf("❓ '%s' não está instalado. Deseja instalar via %s [y/n]? ", packageName, method)
-	if err := keyboard.Open(); err != nil {
-		panic(err)
-	}
-	defer keyboard.Close()
-
-	for {
-		char, _, err := keyboard.GetSingleKey()
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println()
-		switch char {
-		case 'y', 'Y':
-			return true
-		case 'n', 'N':
-			fmt.Printf("❌ Instalação de '%s' cancelada.\n", packageName)
-			return false
-		}
-	}
-}
-
-// Executa o comando de instalação para Rust ou b3sum
-func installPackage(command string, args ...string) error {
-	cmd := exec.Command(command, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("❌ Falha ao instalar '%s'. Verifique sua conexão ou permissões.\n", command)
-		return err
-	}
-	fmt.Printf("✅ '%s' instalado com sucesso.\n", command)
-	return nil
 }
 
 func main() {
 	flag.Parse()
 
+	if *rapidhash {
+		extension = ".rh"
+	} else {
+		extension = ".b3"
+	}
+
 	if *version || *Vversion {
-		print("Picohash 1.0\n")
+		print("Picohash 1.1\n")
 		return
 	}
 
 	// Verifica se o b3sum está disponível
-	if !isCommandAvailable("b3sum") {
-		if askToInstall("b3sum", "cargo") {
-			if !isCommandAvailable("cargo") {
-				fmt.Println("❌ 'cargo' não encontrado.")
-				if askToInstall("Rust", "script oficial") {
-					if err := installPackage("sh", "-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"); err != nil {
-						return
-					}
-				} else {
-					fmt.Println("❌ O programa requer 'cargo' para instalar 'b3sum'.")
-					return
-				}
-			}
-			// Instala o b3sum via cargo
-			if err := installPackage("cargo", "install", "b3sum"); err != nil {
-				return
-			}
-		} else {
-			fmt.Println("❌ O programa requer 'b3sum' para funcionar. Instale-o antes de prosseguir.")
-			return
-		}
-		fmt.Println("✅ Tudo pronto para continuar!")
-		fmt.Println()
+	if !*rapidhash && !isCommandAvailable("b3sum") {
+		print("Install b3sum to continue...\n")
+		return
+	}
+
+	if *rapidhash && !isCommandAvailable("rapidhash") {
+		print("Install rapidhash to continue...\n")
+		return
 	}
 
 	// Define o diretório padrão como "."
