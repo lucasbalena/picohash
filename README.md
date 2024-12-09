@@ -120,7 +120,14 @@ picohash -j
 It reads hashes.b3 (if it exists) and adds any new hashes found in the directory
 to it.
 
-**Rename a file**
+**Why?**
+
+If you want to copy only a subfolder that was hashed with `-a`, you can split
+the hashes, copy the subfolder along with its associated hashes, paste them in
+the destination, and then join the hashes. This ensures that all paths remain
+correctly relative.
+
+**Rename a file or directory**
 
     1.	Rename the file.
     2.	Rename the sidecar file.
@@ -130,7 +137,7 @@ to it.
 picohash -r
 ```
 
-If you use -a:
+If you use -a (ignore sidecar if it is a directory):
 
 ```console
 picohash -s                     # Who wants to deal with a long .txt?
@@ -140,6 +147,40 @@ picohash -r                     # Rename the inside contents
 picohash -j                     # Recreate hashes.b3
 picohash -d                     # Delete the sidecar files
 ```
+
+Or
+
+```console
+picohash -s                     # Who wants to deal with a long .txt?
+# Rename the file
+# Delete the sidecar
+# Delete hashes.b3              # To prevent duplicates
+picohash -j                     # Recreate hashes.b3
+picohash -a                     # Hash the renamed file
+picohash -d                     # Delete the sidecar files
+```
+
+**Perhaps there are better ways to handle renaming**
+
+The current structure for _.b3_ and _.rph_ is as follows:
+
+```
+hash name
+```
+
+This format ensures compatibility with other hash-checking programs but requires
+using `-r` to update the sidecar file content to match the new name.
+
+However, even if we change the structure to:
+
+```
+hash
+```
+
+all other steps would still be necessary with you use `-a`.
+
+In a folder with thousands of files and subfolders, having sidecar files becomes
+overwhelming.
 
 | Symbol | Meaning                                             |
 | ------ | --------------------------------------------------- |
